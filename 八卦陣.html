@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D 幾何光學折射與反射實驗室 · Optics Lab</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body, html {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background-color: #080c14;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: #e0e6ed;
+        }
+
+        #canvas-container {
+            width: 100%; height: 100%;
+            position: absolute; top: 0; left: 0;
+            z-index: 1;
+        }
+
+        /* 1. 左上方區域：按鈕列 */
+        .top-left-bar {
+            position: absolute;
+            top: 20px; left: 20px;
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* 3. 右上方區域：返回上一步、縮放與重置 */
+        .top-right-bar {
+            position: absolute;
+            top: 20px; right: 20px;
+            z-index: 10;
+            display: flex;
+            gap: 8px;
+        }
+
+        /* 通用按鈕樣式 */
+        .btn {
+            background: rgba(18, 26, 43, 0.85);
+            border: 1px solid rgba(0, 220, 255, 0.35);
+            color: #ffffff;
+            padding: 9px 16px;
+            font-size: 13px;
+            letter-spacing: 1px;
+            border-radius: 6px;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            transition: all 0.25s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        }
+        .btn:hover {
+            background: rgba(0, 220, 255, 0.25);
+            border-color: rgba(0, 255, 200, 0.8);
+            box-shadow: 0 0 12px rgba(0, 220, 255, 0.5);
+            transform: translateY(-2px);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, rgba(0, 180, 216, 0.4), rgba(0, 119, 182, 0.6));
+            border-color: #00b4d8;
+            font-weight: bold;
+        }
+        .btn-undo {
+            background: rgba(255, 180, 0, 0.15);
+            border-color: rgba(255, 200, 0, 0.5);
+            color: #ffda66;
+        }
+        .btn-undo:hover {
+            background: rgba(255, 180, 0, 0.3);
+            border-color: #ffda66;
+            box-shadow: 0 0 12px rgba(255, 218, 102, 0.5);
+        }
+        .btn-prop {
+            background: rgba(0, 255, 200, 0.15);
+            border-color: #00ffc8;
+            color: #00ffc8;
+            font-weight: bold;
+        }
+        .btn-prop:hover {
+            background: rgba(0, 255, 200, 0.3);
+            box-shadow: 0 0 15px rgba(0, 255, 200, 0.6);
+        }
+
+        /* 下方工具欄 */
+        .bottom-drawer {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .drawer-toggle-btn {
+            background: rgba(18, 26, 43, 0.9);
+            border: 1px solid rgba(0, 220, 255, 0.3);
+            border-bottom: none;
+            color: #00f3ff;
+            padding: 6px 20px;
+            font-size: 12px;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            letter-spacing: 1px;
+        }
+        .drawer-content {
+            width: 100%;
+            background: rgba(10, 15, 26, 0.88);
+            backdrop-filter: blur(16px);
+            border-top: 1px solid rgba(0, 220, 255, 0.25);
+            padding: 15px 20px;
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            white-space: nowrap;
+            scroll-behavior: smooth;
+        }
+        .drawer-content::-webkit-scrollbar { height: 6px; }
+        .drawer-content::-webkit-scrollbar-thumb { background: rgba(0, 220, 255, 0.3); border-radius: 3px; }
+
+        .tool-card {
+            flex: 0 0 auto;
+            width: 95px; height: 85px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            gap: 6px;
+        }
+        .tool-card:hover {
+            background: rgba(0, 220, 255, 0.15);
+            border-color: #00f3ff;
+            transform: translateY(-3px);
+        }
+        .tool-card.mirror-card:hover {
+            background: rgba(220, 240, 255, 0.2);
+            border-color: #ffffff;
+        }
+        .tool-card svg { width: 36px; height: 36px; fill: none; stroke: #00f3ff; stroke-width: 1.8; }
+        .tool-card.mirror-card svg { stroke: #e0f7fa; }
+        .tool-card span { font-size: 11px; color: #a0aec0; }
+
+        /* 浮動屬性控制數據面板 */
+        .inspector-panel {
+            position: absolute;
+            top: 75px; left: 20px;
+            z-index: 9;
+            background: rgba(12, 18, 30, 0.94);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(0, 255, 200, 0.4);
+            border-radius: 10px;
+            width: 260px;
+            display: none;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .inspector-header {
+            padding: 12px 16px;
+            background: rgba(0, 220, 255, 0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .inspector-header span { font-size: 13px; font-weight: bold; color: #00ffc8; }
+        .inspector-body {
+            padding: 14px 16px;
+            display: none;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .control-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 12px; color: #cbd5e1; }
+        .control-row input[type="range"] { width: 100%; accent-color: #00ffc8; cursor: pointer; }
+        .control-row input[type="color"] { border: none; width: 30px; height: 24px; cursor: pointer; background: transparent; }
+        
+        .delete-btn {
+            width: 100%;
+            background: rgba(255, 50, 50, 0.2);
+            border: 1px solid rgba(255, 80, 80, 0.5);
+            color: #ff8080;
+            padding: 7px;
+            font-size: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: all 0.2s;
+        }
+        .delete-btn:hover { background: rgba(255, 50, 50, 0.5); color: #fff; }
+
+        .bottom-drawer.collapsed {
+            transform: translateY(calc(100% - 28px));
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <canvas id="opticsCanvas"></canvas>
+    </div>
+
+    <!-- 左上方操作區域 -->
+    <div class="top-left-bar">
+        <button class="btn btn-primary" onclick="addLightSource()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+            新增發射光源
+        </button>
+        <button class="btn" onclick="clearScene()">清空畫面</button>
+        
+        <button class="btn btn-prop" id="propToggleBtn" style="display: none;" onclick="toggleInspectorBody()">
+            ⚙ 屬性設定 <span id="propArrow">▸</span>
+        </button>
+    </div>
+
+    <!-- 右上方控制區域 -->
+    <div class="top-right-bar">
+        <button class="btn btn-undo" onclick="undo()" title="返回上一步 (Ctrl+Z)">↩️ 上一步</button>
+        <button class="btn" onclick="zoomView(1.2)">🔍 +</button>
+        <button class="btn" onclick="zoomView(1/1.2)">🔍 -</button>
+        <button class="btn" onclick="resetView()">🎯 重置視角</button>
+    </div>
+
+    <!-- 浮動屬性控制數據面板 -->
+    <div class="inspector-panel" id="inspector">
+        <div class="inspector-header">
+            <span id="inspectorTitle">物件屬性</span>
+        </div>
+        <div class="inspector-body" id="inspectorBody">
+            <div id="inspectorControls"></div>
+            <button class="delete-btn" onclick="deleteSelected()">🗑️ 刪除此組件</button>
+        </div>
+    </div>
+
+    <!-- 下方透鏡與鏡子工具欄 -->
+    <div class="bottom-drawer" id="drawer">
+        <button class="drawer-toggle-btn" onclick="toggleDrawer()" id="drawerToggleBtn">▼ 收起透鏡與鏡子工具欄</button>
+        <div class="drawer-content">
+            <div class="tool-card mirror-card" onclick="addMirror('flat')">
+                <svg viewBox="0 0 40 40"><line x1="8" y1="20" x2="32" y2="20" stroke-width="3"/><line x1="10" y1="24" x2="6" y2="28"/><line x1="18" y1="24" x2="14" y2="28"/><line x1="26" y1="24" x2="22" y2="28"/><line x1="34" y1="24" x2="30" y2="28"/></svg>
+                <span>平面鏡</span>
+            </div>
+            <div class="tool-card mirror-card" onclick="addMirror('concave')">
+                <svg viewBox="0 0 40 40"><path d="M10,8 C26,14 26,26 10,32" stroke-width="3"/><path d="M12,12 L8,16 M16,18 L12,22 M12,26 L8,30" stroke-width="1.5"/></svg>
+                <span>曲面鏡 (凹)</span>
+            </div>
+            <div class="tool-card" onclick="addLens('biconvex')">
+                <svg viewBox="0 0 40 40"><path d="M14,6 C26,14 26,26 14,34 C26,26 26,14 14,6 Z"/></svg>
+                <span>雙凸透鏡</span>
+            </div>
+            <div class="tool-card" onclick="addLens('biconcave')">
+                <svg viewBox="0 0 40 40"><path d="M12,6 C22,16 22,24 12,34 L28,34 C18,24 18,16 28,6 Z"/></svg>
+                <span>雙凹透鏡</span>
+            </div>
+            <div class="tool-card" onclick="addLens('planoconvex')">
+                <svg viewBox="0 0 40 40"><path d="M12,6 L12,34 C28,26 28,14 12,6 Z"/></svg>
+                <span>平凸透鏡</span>
+            </div>
+            <div class="tool-card" onclick="addLens('planoconcave')">
+                <svg viewBox="0 0 40 40"><path d="M12,6 L12,34 L26,34 C18,24 18,16 26,6 Z"/></svg>
+                <span>平凹透鏡</span>
+            </div>
+            <div class="tool-card" onclick="addLens('circle')">
+                <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="14"/></svg>
+                <span>圓形透鏡</span>
+            </div>
+            <div class="tool-card" onclick="addLens('triangle')">
+                <svg viewBox="0 0 40 40"><polygon points="20,6 34,34 6,34"/></svg>
+                <span>三稜鏡</span>
+            </div>
+            <div class="tool-card" onclick="addLens('rectangle')">
+                <svg viewBox="0 0 40 40"><rect x="8" y="10" width="24" height="20" rx="2"/></svg>
+                <span>矩形磚</span>
+            </div>
+            <div class="tool-card" onclick="addLens('pentagon')">
+                <svg viewBox="0 0 40 40"><polygon points="20,6 34,16 29,32 11,32 6,16"/></svg>
+                <span>五邊形透鏡</span>
+            </div>
+            <div class="tool-card" onclick="addLens('semicircle')">
+                <svg viewBox="0 0 40 40"><path d="M8,20 A12,12 0 0,1 32,20 Z"/></svg>
+                <span>半圓透鏡</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Canvas 與環境配置 ---
+        const canvas = document.getElementById('opticsCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+
+        let viewPan = { x: 0, y: 0 };
+        let viewZoom = 1.0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            if (viewPan.x === 0 && viewPan.y === 0) {
+                viewPan.x = width / 2;
+                viewPan.y = height / 2;
+            }
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function screenToWorld(sx, sy) {
+            return {
+                x: (sx - viewPan.x) / viewZoom,
+                y: (sy - viewPan.y) / viewZoom
+            };
+        }
+
+        // 角度轉換輔助函式
+        function getAngleInDegrees(rad) {
+            let deg = (rad * 180 / Math.PI) % 360;
+            if (deg < 0) deg += 360;
+            return deg.toFixed(2);
+        }
+
+        // --- 2. 幾何多邊形頂點生成 ---
+        function generatePolygonVertices(type, w, h) {
+            let pts = [];
+            const steps = 24;
+
+            if (type === 'mirror_flat') {
+                pts.push({ x: -w/2, y: -h/2 }, { x: w/2, y: -h/2 }, { x: w/2, y: h/2 }, { x: -w/2, y: h/2 });
+            } else if (type === 'mirror_concave') {
+                for (let i = 0; i <= steps; i++) {
+                    let t = i / steps, angle = -Math.PI/3 + t * (2*Math.PI/3);
+                    pts.push({ x: Math.cos(angle)*(w/2) - w/4, y: Math.sin(angle)*(h/2) });
+                }
+                for (let i = steps; i >= 0; i--) {
+                    let t = i / steps, angle = -Math.PI/3 + t * (2*Math.PI/3);
+                    pts.push({ x: Math.cos(angle)*(w/2) - w/4 + 10, y: Math.sin(angle)*(h/2) });
+                }
+            } else if (type === 'biconvex') {
+                for (let i = 0; i <= steps; i++) {
+                    let angle = -Math.PI/2 + (i / steps) * Math.PI;
+                    pts.push({ x: Math.cos(angle)*(w/2), y: Math.sin(angle)*(h/2) });
+                }
+                for (let i = 0; i <= steps; i++) {
+                    let angle = Math.PI/2 + (i / steps) * Math.PI;
+                    pts.push({ x: Math.cos(angle)*(w/2), y: Math.sin(angle)*(h/2) });
+                }
+            } else if (type === 'biconcave') {
+                pts.push({ x: -w/2, y: -h/2 }, { x: w/2, y: -h/2 });
+                for (let i = 0; i <= steps; i++) {
+                    let angle = -Math.PI/2 + (i / steps) * Math.PI;
+                    pts.push({ x: w/2 - Math.cos(angle)*(w/3), y: Math.sin(angle)*(h/2) });
+                }
+                pts.push({ x: w/2, y: h/2 }, { x: -w/2, y: h/2 });
+                for (let i = 0; i <= steps; i++) {
+                    let angle = Math.PI/2 + (i / steps) * Math.PI;
+                    pts.push({ x: -w/2 - Math.cos(angle)*(w/3), y: Math.sin(angle)*(h/2) });
+                }
+            } else if (type === 'planoconvex') {
+                pts.push({ x: -w/4, y: -h/2 }, { x: -w/4, y: h/2 });
+                for (let i = 0; i <= steps; i++) {
+                    let angle = Math.PI/2 - (i / steps) * Math.PI;
+                    pts.push({ x: -w/4 + Math.cos(angle)*(w*0.75), y: Math.sin(angle)*(h/2) });
+                }
+            } else if (type === 'planoconcave') {
+                pts.push({ x: -w/2, y: -h/2 });
+                for (let i = 0; i <= steps; i++) {
+                    let angle = -Math.PI/2 + (i / steps) * Math.PI;
+                    pts.push({ x: w/2 - Math.cos(angle)*(w/3), y: Math.sin(angle)*(h/2) });
+                }
+                pts.push({ x: -w/2, y: h/2 });
+            } else if (type === 'circle') {
+                for (let i = 0; i < 36; i++) {
+                    let a = (i / 36) * Math.PI * 2;
+                    pts.push({ x: Math.cos(a)*(w/2), y: Math.sin(a)*(h/2) });
+                }
+            } else if (type === 'triangle') {
+                pts.push({ x: 0, y: -h/2 }, { x: w/2, y: h/2 }, { x: -w/2, y: h/2 });
+            } else if (type === 'rectangle') {
+                pts.push({ x: -w/2, y: -h/2 }, { x: w/2, y: -h/2 }, { x: w/2, y: h/2 }, { x: -w/2, y: h/2 });
+            } else if (type === 'pentagon') {
+                for (let i = 0; i < 5; i++) {
+                    let a = -Math.PI/2 + (i / 5) * Math.PI * 2;
+                    pts.push({ x: Math.cos(a)*(w/2), y: Math.sin(a)*(h/2) });
+                }
+            } else if (type === 'semicircle') {
+                for (let i = 0; i <= steps; i++) {
+                    let a = (i / steps) * Math.PI;
+                    pts.push({ x: Math.cos(a)*(w/2), y: Math.sin(a)*(h/2) });
+                }
+            }
+            return pts;
+        }
+
+        // 透鏡類別
+        class Lens {
+            constructor(type, x, y) {
+                this.type = type;
+                this.x = x; this.y = y;
+                this.width = 120; this.height = 140;
+                if (type === 'circle') { this.width = this.height = 130; }
+                if (type === 'triangle') { this.width = 140; this.height = 120; }
+                this.rotation = 0;
+                this.n = 1.5;
+                this.isMirror = false;
+                this.updateVertices();
+            }
+            updateVertices() {
+                this.localVertices = generatePolygonVertices(this.type, this.width, this.height);
+            }
+            getWorldVertices() {
+                const cos = Math.cos(this.rotation), sin = Math.sin(this.rotation);
+                return this.localVertices.map(v => ({
+                    x: this.x + (v.x * cos - v.y * sin),
+                    y: this.y + (v.x * sin + v.y * cos)
+                }));
+            }
+        }
+
+        // 鏡子類別
+        class Mirror {
+            constructor(type, x, y) {
+                this.type = (type === 'flat') ? 'mirror_flat' : 'mirror_concave';
+                this.x = x; this.y = y;
+                this.width = (type === 'flat') ? 160 : 120;
+                this.height = (type === 'flat') ? 16 : 140;
+                this.rotation = 0;
+                this.isMirror = true;
+                this.updateVertices();
+            }
+            updateVertices() {
+                this.localVertices = generatePolygonVertices(this.type, this.width, this.height);
+            }
+            getWorldVertices() {
+                const cos = Math.cos(this.rotation), sin = Math.sin(this.rotation);
+                return this.localVertices.map(v => ({
+                    x: this.x + (v.x * cos - v.y * sin),
+                    y: this.y + (v.x * sin + v.y * cos)
+                }));
+            }
+        }
+
+        // 光源類別
+        class LightSource {
+            constructor(x, y) {
+                this.x = x; this.y = y;
+                this.rotation = 0;
+                this.beamWidth = 80;
+                this.rayCount = 11;
+                this.color = '#00f3ff';
+            }
+            getRays() {
+                let rays = [];
+                const cos = Math.cos(this.rotation), sin = Math.sin(this.rotation);
+                const perpX = -sin, perpY = cos;
+                const dirX = cos, dirY = sin;
+                const startOffset = -this.beamWidth / 2;
+                const step = this.rayCount > 1 ? this.beamWidth / (this.rayCount - 1) : 0;
+
+                for (let i = 0; i < this.rayCount; i++) {
+                    let offset = startOffset + i * step;
+                    rays.push({
+                        p: { x: this.x + perpX * offset, y: this.y + perpY * offset },
+                        d: { x: dirX, y: dirY }
+                    });
+                }
+                return rays;
+            }
+        }
+
+        // 場景與歷史紀錄
+        let lenses = [];
+        let mirrors = [];
+        let lightSources = [];
+        let selectedObject = null;
+        let dragMode = null;
+        let dragStart = { x: 0, y: 0 };
+        let isInspectorOpen = false;
+
+        let historyStack = [];
+        const MAX_HISTORY = 30;
+
+        function saveState() {
+            if (historyStack.length >= MAX_HISTORY) historyStack.shift();
+            const snapshot = {
+                lenses: lenses.map(l => ({ type: l.type, x: l.x, y: l.y, width: l.width, height: l.height, rotation: l.rotation, n: l.n })),
+                mirrors: mirrors.map(m => ({ type: m.type === 'mirror_flat' ? 'flat' : 'concave', x: m.x, y: m.y, width: m.width, height: m.height, rotation: m.rotation })),
+                lightSources: lightSources.map(ls => ({ x: ls.x, y: ls.y, rotation: ls.rotation, beamWidth: ls.beamWidth, rayCount: ls.rayCount, color: ls.color }))
+            };
+            historyStack.push(JSON.stringify(snapshot));
+        }
+
+        function undo() {
+            if (historyStack.length === 0) return;
+            const state = JSON.parse(historyStack.pop());
+
+            lenses = state.lenses.map(d => {
+                let l = new Lens(d.type, d.x, d.y);
+                l.width = d.width; l.height = d.height; l.rotation = d.rotation; l.n = d.n;
+                l.updateVertices();
+                return l;
+            });
+
+            mirrors = state.mirrors.map(d => {
+                let m = new Mirror(d.type, d.x, d.y);
+                m.width = d.width; m.height = d.height; m.rotation = d.rotation;
+                m.updateVertices();
+                return m;
+            });
+
+            lightSources = state.lightSources.map(d => {
+                let ls = new LightSource(d.x, d.y);
+                ls.rotation = d.rotation; ls.beamWidth = d.beamWidth; ls.rayCount = d.rayCount; ls.color = d.color;
+                return ls;
+            });
+
+            selectedObject = null;
+            hidePropButton();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                undo();
+            }
+        });
+
+        function initScene() {
+            lightSources.push(new LightSource(-240, 0));
+            lenses.push(new Lens('biconvex', -20, 0));
+            mirrors.push(new Mirror('flat', 180, 0));
+            mirrors[0].rotation = Math.PI / 4 + 0.2;
+        }
+        initScene();
+
+        // --- 3. 精準點擊判定 ---
+        function isPointInPolygon(p, polygon) {
+            let isInside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                if (((polygon[i].y > p.y) !== (polygon[j].y > p.y)) &&
+                    (p.x < (polygon[j].x - polygon[i].x) * (p.y - polygon[i].y) / (polygon[j].y - polygon[i].y) + polygon[i].x)) {
+                    isInside = !isInside;
+                }
+            }
+            return isInside;
+        }
+
+        function isPointInLightSource(p, ls) {
+            let dx = p.x - ls.x;
+            let dy = p.y - ls.y;
+            let cos = Math.cos(-ls.rotation);
+            let sin = Math.sin(-ls.rotation);
+            let lx = dx * cos - dy * sin;
+            let ly = dx * sin + dy * cos;
+
+            let inRect = (lx >= -18 && lx <= 2 && ly >= (-ls.beamWidth/2 - 8) && ly <= (ls.beamWidth/2 + 8));
+            let inCenter = (Math.hypot(lx, ly) <= 12);
+            return inRect || inCenter;
+        }
+
+        function hitTestObject(m) {
+            let allObjs = [...lenses, ...mirrors, ...lightSources].reverse();
+            for (let obj of allObjs) {
+                if (obj instanceof Lens || obj instanceof Mirror) {
+                    if (isPointInPolygon(m, obj.getWorldVertices())) return obj;
+                } else if (obj instanceof LightSource) {
+                    if (isPointInLightSource(m, obj)) return obj;
+                }
+            }
+            return null;
+        }
+
+        // --- 4. 光學射線追蹤 ---
+        function raySegmentIntersection(P, D, A, B) {
+            const V = { x: B.x - A.x, y: B.y - A.y };
+            const cross = D.x * V.y - D.y * V.x;
+            if (Math.abs(cross) < 1e-8) return null;
+
+            const QP = { x: A.x - P.x, y: A.y - P.y };
+            const t = (QP.x * V.y - QP.y * V.x) / cross;
+            const u = (QP.x * D.y - QP.y * D.x) / cross;
+
+            if (t > 0.001 && u >= 0 && u <= 1) {
+                let len = Math.hypot(V.x, V.y);
+                let N = { x: -V.y / len, y: V.x / len };
+                return { t, point: { x: P.x + t * D.x, y: P.y + t * D.y }, normal: N };
+            }
+            return null;
+        }
+
+        function traceRay(ray, depth = 0) {
+            if (depth > 16) return [];
+
+            let closestHit = null;
+            let hitObj = null;
+
+            for (let obj of [...lenses, ...mirrors]) {
+                let verts = obj.getWorldVertices();
+                for (let i = 0; i < verts.length; i++) {
+                    let A = verts[i], B = verts[(i + 1) % verts.length];
+                    let hit = raySegmentIntersection(ray.p, ray.d, A, B);
+                    if (hit && (!closestHit || hit.t < closestHit.t)) {
+                        closestHit = hit;
+                        hitObj = obj;
+                    }
+                }
+            }
+
+            if (!closestHit) {
+                return [{ x: ray.p.x + ray.d.x * 2000, y: ray.p.y + ray.d.y * 2000 }];
+            }
+
+            let P = closestHit.point;
+            let N = closestHit.normal;
+            let I = ray.d;
+
+            if (hitObj.isMirror) {
+                let dot = I.x * N.x + I.y * N.y;
+                let reflectDir = {
+                    x: I.x - 2 * dot * N.x,
+                    y: I.y - 2 * dot * N.y
+                };
+                let offsetP = { x: P.x + reflectDir.x * 0.01, y: P.y + reflectDir.y * 0.01 };
+                return [P].concat(traceRay({ p: offsetP, d: reflectDir }, depth + 1));
+            }
+
+            let cosI = -(I.x * N.x + I.y * N.y);
+            let n1 = 1.0, n2 = hitObj.n;
+
+            if (cosI < 0) {
+                cosI = -cosI;
+                N = { x: -N.x, y: -N.y };
+                n1 = hitObj.n;
+                n2 = 1.0;
+            }
+
+            let eta = n1 / n2;
+            let k = 1 - eta * eta * (1 - cosI * cosI);
+
+            let nextDir;
+            if (k < 0) {
+                nextDir = { x: I.x + 2 * cosI * N.x, y: I.y + 2 * cosI * N.y };
+            } else {
+                let cosT = Math.sqrt(k);
+                nextDir = {
+                    x: eta * I.x + (eta * cosI - cosT) * N.x,
+                    y: eta * I.y + (eta * cosI - cosT) * N.y
+                };
+            }
+
+            let offsetP = { x: P.x + nextDir.x * 0.01, y: P.y + nextDir.y * 0.01 };
+            return [P].concat(traceRay({ p: offsetP, d: nextDir }, depth + 1));
+        }
+
+        // --- 5. 畫布渲染循環 ---
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.translate(viewPan.x, viewPan.y);
+            ctx.scale(viewZoom, viewZoom);
+
+            // 背景網格
+            ctx.strokeStyle = 'rgba(0, 180, 255, 0.05)';
+            ctx.lineWidth = 1 / viewZoom;
+            const gridSize = 40;
+            const startX = Math.floor((-viewPan.x / viewZoom) / gridSize) * gridSize;
+            const endX = startX + (width / viewZoom) + gridSize * 2;
+            const startY = Math.floor((-viewPan.y / viewZoom) / gridSize) * gridSize;
+            const endY = startY + (height / viewZoom) + gridSize * 2;
+
+            ctx.beginPath();
+            for (let x = startX; x < endX; x += gridSize) { ctx.moveTo(x, startY); ctx.lineTo(x, endY); }
+            for (let y = startY; y < endY; y += gridSize) { ctx.moveTo(startX, y); ctx.lineTo(endX, y); }
+            ctx.stroke();
+
+            // 繪製透鏡
+            lenses.forEach(lens => {
+                let verts = lens.getWorldVertices();
+                ctx.beginPath();
+                ctx.moveTo(verts[0].x, verts[0].y);
+                for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+                ctx.closePath();
+
+                ctx.fillStyle = 'rgba(0, 180, 255, 0.12)';
+                ctx.fill();
+                ctx.strokeStyle = (selectedObject === lens) ? '#00ffc8' : 'rgba(0, 220, 255, 0.6)';
+                ctx.lineWidth = (selectedObject === lens) ? 2.5 / viewZoom : 1.5 / viewZoom;
+                ctx.stroke();
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.font = `${11 / viewZoom}px sans-serif`;
+                ctx.fillText(`n=${lens.n}`, lens.x - 12, lens.y + 4);
+            });
+
+            // 繪製鏡子
+            mirrors.forEach(mirror => {
+                let verts = mirror.getWorldVertices();
+                ctx.beginPath();
+                ctx.moveTo(verts[0].x, verts[0].y);
+                for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+                ctx.closePath();
+
+                ctx.fillStyle = 'rgba(200, 230, 255, 0.35)';
+                ctx.fill();
+                ctx.strokeStyle = (selectedObject === mirror) ? '#00ffc8' : '#e0f7fa';
+                ctx.lineWidth = (selectedObject === mirror) ? 2.5 / viewZoom : 2.0 / viewZoom;
+                ctx.stroke();
+            });
+
+            // 繪製光源
+            lightSources.forEach(ls => {
+                ctx.save();
+                ctx.translate(ls.x, ls.y);
+                ctx.rotate(ls.rotation);
+                ctx.fillStyle = (selectedObject === ls) ? '#00ffc8' : '#00b4d8';
+                ctx.fillRect(-15, -ls.beamWidth/2 - 5, 12, ls.beamWidth + 10);
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+            });
+
+            // 繪製雷射光束
+            ctx.globalCompositeOperation = 'lighter';
+            lightSources.forEach(ls => {
+                let rays = ls.getRays();
+                rays.forEach(ray => {
+                    let path = [ray.p].concat(traceRay(ray));
+
+                    ctx.beginPath();
+                    ctx.moveTo(path[0].x, path[0].y);
+                    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+
+                    ctx.strokeStyle = ls.color;
+                    ctx.lineWidth = 1.8 / viewZoom;
+                    ctx.shadowColor = ls.color;
+                    ctx.shadowBlur = 8;
+                    ctx.stroke();
+                });
+            });
+            ctx.shadowBlur = 0;
+            ctx.globalCompositeOperation = 'source-over';
+
+            // 繪製選取控制項（旋轉/縮放手把與角度標籤）
+            if (selectedObject) {
+                drawSelectionControls(selectedObject);
+            }
+
+            ctx.restore();
+            requestAnimationFrame(draw);
+        }
+        draw();
+
+        function drawSelectionControls(obj) {
+            let cx = obj.x, cy = obj.y;
+            let size = (obj.width || obj.beamWidth || 80) / 2 + 15;
+
+            ctx.strokeStyle = 'rgba(0, 255, 200, 0.5)';
+            ctx.lineWidth = 1 / viewZoom;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.arc(cx, cy, size, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 旋轉手把 (綠)
+            let rotX = cx + Math.cos(obj.rotation) * size;
+            let rotY = cy + Math.sin(obj.rotation) * size;
+            ctx.fillStyle = '#00ff88';
+            ctx.beginPath(); ctx.arc(rotX, rotY, 6 / viewZoom, 0, Math.PI * 2); ctx.fill();
+
+            // 縮放手把 (藍)
+            let scaleX = cx + Math.cos(obj.rotation + Math.PI/2) * size;
+            let scaleY = cy + Math.sin(obj.rotation + Math.PI/2) * size;
+            ctx.fillStyle = '#00b4d8';
+            ctx.beginPath(); ctx.arc(scaleX, scaleY, 6 / viewZoom, 0, Math.PI * 2); ctx.fill();
+
+            // 即時角度 HUD 標籤
+            let angleDegStr = getAngleInDegrees(obj.rotation) + '°';
+            let labelText = `∠ ${angleDegStr}`;
+
+            ctx.save();
+            ctx.font = `bold ${12 / viewZoom}px sans-serif`;
+            let textWidth = ctx.measureText(labelText).width;
+            let textX = rotX;
+            let textY = rotY - 12 / viewZoom;
+
+            ctx.fillStyle = 'rgba(8, 12, 20, 0.85)';
+            ctx.fillRect(textX - textWidth/2 - 5/viewZoom, textY - 12/viewZoom, textWidth + 10/viewZoom, 15/viewZoom);
+
+            ctx.fillStyle = '#00ffc8';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(labelText, textX, textY);
+            ctx.restore();
+        }
+
+        // --- 6. 互動事件處理 ---
+        canvas.addEventListener('mousedown', (e) => {
+            let m = screenToWorld(e.clientX, e.clientY);
+            dragStart = { x: e.clientX, y: e.clientY };
+
+            if (selectedObject) {
+                let obj = selectedObject;
+                let size = (obj.width || obj.beamWidth || 80) / 2 + 15;
+                let rotX = obj.x + Math.cos(obj.rotation) * size;
+                let rotY = obj.y + Math.sin(obj.rotation) * size;
+                let scaleX = obj.x + Math.cos(obj.rotation + Math.PI/2) * size;
+                let scaleY = obj.y + Math.sin(obj.rotation + Math.PI/2) * size;
+
+                if (Math.hypot(m.x - rotX, m.y - rotY) < 12 / viewZoom) {
+                    saveState();
+                    dragMode = 'rotate';
+                    return;
+                }
+                if (Math.hypot(m.x - scaleX, m.y - scaleY) < 12 / viewZoom) {
+                    saveState();
+                    dragMode = 'scale';
+                    return;
+                }
+            }
+
+            let found = hitTestObject(m);
+
+            if (found) {
+                saveState();
+                selectedObject = found;
+                dragMode = 'move';
+                showPropButton();
+            } else {
+                selectedObject = null;
+                dragMode = 'pan';
+                hidePropButton();
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            let m = screenToWorld(e.clientX, e.clientY);
+
+            if (dragMode === 'move' && selectedObject) {
+                let dx = (e.clientX - dragStart.x) / viewZoom;
+                let dy = (e.clientY - dragStart.y) / viewZoom;
+                selectedObject.x += dx;
+                selectedObject.y += dy;
+                dragStart = { x: e.clientX, y: e.clientY };
+            } else if (dragMode === 'rotate' && selectedObject) {
+                let rawAngle = Math.atan2(m.y - selectedObject.y, m.x - selectedObject.x);
+                if (e.shiftKey) {
+                    let step = Math.PI / 12; // 15度吸附
+                    rawAngle = Math.round(rawAngle / step) * step;
+                }
+                selectedObject.rotation = rawAngle;
+                updateInspectorAngleDisplay(); // 動態更新面板角度數值
+            } else if (dragMode === 'scale' && selectedObject) {
+                let dist = Math.hypot(m.x - selectedObject.x, m.y - selectedObject.y);
+                let newSize = Math.max(20, dist * 2 - 30);
+                if (selectedObject instanceof Lens || selectedObject instanceof Mirror) {
+                    selectedObject.width = selectedObject.height = newSize;
+                    selectedObject.updateVertices();
+                } else if (selectedObject instanceof LightSource) {
+                    selectedObject.beamWidth = newSize;
+                }
+                updateInspectorSizeDisplay(); // 動態更新面板尺寸數值
+            } else if (dragMode === 'pan') {
+                viewPan.x += e.clientX - dragStart.x;
+                viewPan.y += e.clientY - dragStart.y;
+                dragStart = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        window.addEventListener('mouseup', () => { dragMode = null; });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            zoomView(e.deltaY < 0 ? 1.1 : 0.9);
+        }, { passive: false });
+
+        // --- 7. 工具欄與功能選單 ---
+        function addLightSource() {
+            saveState();
+            let m = screenToWorld(width / 2, height / 2);
+            let ls = new LightSource(m.x - 150, m.y);
+            lightSources.push(ls);
+            selectedObject = ls;
+            showPropButton();
+        }
+
+        function addLens(type) {
+            saveState();
+            let m = screenToWorld(width / 2, height / 2);
+            let l = new Lens(type, m.x, m.y);
+            lenses.push(l);
+            selectedObject = l;
+            showPropButton();
+        }
+
+        function addMirror(type) {
+            saveState();
+            let m = screenToWorld(width / 2, height / 2);
+            let mir = new Mirror(type, m.x, m.y);
+            mirrors.push(mir);
+            selectedObject = mir;
+            showPropButton();
+        }
+
+        function clearScene() {
+            saveState();
+            lenses = [];
+            mirrors = [];
+            lightSources = [];
+            selectedObject = null;
+            hidePropButton();
+        }
+
+        function zoomView(factor) {
+            viewZoom *= factor;
+            viewZoom = Math.min(Math.max(0.3, viewZoom), 5.0);
+        }
+
+        function resetView() {
+            viewZoom = 1.0;
+            viewPan = { x: width / 2, y: height / 2 };
+        }
+
+        function toggleDrawer() {
+            const drawer = document.getElementById('drawer');
+            const btn = document.getElementById('drawerToggleBtn');
+            drawer.classList.toggle('collapsed');
+            btn.textContent = drawer.classList.contains('collapsed') ? '▲ 展開透鏡與鏡子工具欄' : '▼ 收起透鏡與鏡子工具欄';
+        }
+
+        // --- 8. 屬性按鈕與面板操作 ---
+        function showPropButton() {
+            const btn = document.getElementById('propToggleBtn');
+            btn.style.display = 'flex';
+            updateInspectorContent();
+        }
+
+        function hidePropButton() {
+            document.getElementById('propToggleBtn').style.display = 'none';
+            document.getElementById('inspector').style.display = 'none';
+            document.getElementById('inspectorBody').style.display = 'none';
+            isInspectorOpen = false;
+            document.getElementById('propArrow').textContent = '▸';
+        }
+
+        function toggleInspectorBody() {
+            const inspector = document.getElementById('inspector');
+            const body = document.getElementById('inspectorBody');
+            const arrow = document.getElementById('propArrow');
+
+            isInspectorOpen = !isInspectorOpen;
+            if (isInspectorOpen) {
+                inspector.style.display = 'block';
+                body.style.display = 'block';
+                arrow.textContent = '▾';
+                updateInspectorContent();
+            } else {
+                inspector.style.display = 'none';
+                body.style.display = 'none';
+                arrow.textContent = '▸';
+            }
+        }
+
+        // 🔥 手動從屬性面板滑塊調控角度
+        function setAngleFromDegree(deg) {
+            if (!selectedObject) return;
+            selectedObject.rotation = (parseFloat(deg) || 0) * Math.PI / 180;
+            const valSpan = document.getElementById('inspectorAngleVal');
+            if (valSpan) {
+                valSpan.innerText = `${getAngleInDegrees(selectedObject.rotation)}°`;
+            }
+        }
+
+        // 🔥 手動從屬性面板調控寬度、高度、光源波寬
+        function setObjectWidth(w) {
+            if (!selectedObject || selectedObject.width === undefined) return;
+            selectedObject.width = parseFloat(w) || 20;
+            if (selectedObject.updateVertices) selectedObject.updateVertices();
+            const valSpan = document.getElementById('inspectorWidthVal');
+            if (valSpan) valSpan.innerText = `${Math.round(selectedObject.width)} px`;
+        }
+
+        function setObjectHeight(h) {
+            if (!selectedObject || selectedObject.height === undefined) return;
+            selectedObject.height = parseFloat(h) || 20;
+            if (selectedObject.updateVertices) selectedObject.updateVertices();
+            const valSpan = document.getElementById('inspectorHeightVal');
+            if (valSpan) valSpan.innerText = `${Math.round(selectedObject.height)} px`;
+        }
+
+        function setLightBeamWidth(bw) {
+            if (!selectedObject || selectedObject.beamWidth === undefined) return;
+            selectedObject.beamWidth = parseFloat(bw) || 10;
+            const valSpan = document.getElementById('inspectorBeamWidthVal');
+            if (valSpan) valSpan.innerText = `${Math.round(selectedObject.beamWidth)} px`;
+        }
+
+        // 當在畫面上旋轉/縮放物件時，即時更新屬性面板數值與滑塊位置
+        function updateInspectorAngleDisplay() {
+            const valSpan = document.getElementById('inspectorAngleVal');
+            const inputEl = document.getElementById('inspectorAngleInput');
+            if (selectedObject) {
+                const degStr = getAngleInDegrees(selectedObject.rotation);
+                if (valSpan) valSpan.innerText = `${degStr}°`;
+                if (inputEl && document.activeElement !== inputEl) {
+                    inputEl.value = degStr;
+                }
+            }
+        }
+
+        function updateInspectorSizeDisplay() {
+            if (!selectedObject) return;
+            if (selectedObject.width !== undefined) {
+                const wSpan = document.getElementById('inspectorWidthVal');
+                const wInput = document.getElementById('inspectorWidthInput');
+                if (wSpan) wSpan.innerText = `${Math.round(selectedObject.width)} px`;
+                if (wInput && document.activeElement !== wInput) wInput.value = selectedObject.width;
+            }
+            if (selectedObject.height !== undefined) {
+                const hSpan = document.getElementById('inspectorHeightVal');
+                const hInput = document.getElementById('inspectorHeightInput');
+                if (hSpan) hSpan.innerText = `${Math.round(selectedObject.height)} px`;
+                if (hInput && document.activeElement !== hInput) hInput.value = selectedObject.height;
+            }
+            if (selectedObject.beamWidth !== undefined) {
+                const bwSpan = document.getElementById('inspectorBeamWidthVal');
+                const bwInput = document.getElementById('inspectorBeamWidthInput');
+                if (bwSpan) bwSpan.innerText = `${Math.round(selectedObject.beamWidth)} px`;
+                if (bwInput && document.activeElement !== bwInput) bwInput.value = selectedObject.beamWidth;
+            }
+        }
+
+        function updateInspectorContent() {
+            const title = document.getElementById('inspectorTitle');
+            const controls = document.getElementById('inspectorControls');
+            if (!selectedObject) return;
+
+            controls.innerHTML = '';
+
+            // 共通角度 HTML
+            let angleHtml = `
+                <div class="control-row" style="flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label>旋轉角度</label>
+                        <span style="color:#00ffc8; font-weight:bold;" id="inspectorAngleVal">${getAngleInDegrees(selectedObject.rotation)}°</span>
+                    </div>
+                    <input type="range" id="inspectorAngleInput" min="0" max="360" step="0.1" value="${getAngleInDegrees(selectedObject.rotation)}" oninput="setAngleFromDegree(this.value)" onchange="saveState()">
+                </div>
+            `;
+
+            if (selectedObject instanceof Lens) {
+                title.innerText = '透鏡/介質 數據設定';
+                controls.innerHTML = angleHtml + `
+                    <div class="control-row" style="flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label>物件寬度 (Width)</label>
+                            <span style="color:#00ffc8; font-weight:bold;" id="inspectorWidthVal">${Math.round(selectedObject.width)} px</span>
+                        </div>
+                        <input type="range" id="inspectorWidthInput" min="20" max="400" step="1" value="${selectedObject.width}" oninput="setObjectWidth(this.value)" onchange="saveState()">
+                    </div>
+                    <div class="control-row" style="flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label>物件高度 (Height)</label>
+                            <span style="color:#00ffc8; font-weight:bold;" id="inspectorHeightVal">${Math.round(selectedObject.height)} px</span>
+                        </div>
+                        <input type="range" id="inspectorHeightInput" min="20" max="400" step="1" value="${selectedObject.height}" oninput="setObjectHeight(this.value)" onchange="saveState()">
+                    </div>
+                    <div class="control-row">
+                        <label>折射率 (n)</label>
+                        <input type="range" min="1.0" max="2.5" step="0.05" value="${selectedObject.n}" oninput="selectedObject.n=parseFloat(this.value)" onchange="saveState()">
+                    </div>
+                `;
+            } else if (selectedObject instanceof Mirror) {
+                title.innerText = '鏡子/反射數據設定';
+                controls.innerHTML = angleHtml + `
+                    <div class="control-row" style="flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label>鏡面寬度 (Width)</label>
+                            <span style="color:#00ffc8; font-weight:bold;" id="inspectorWidthVal">${Math.round(selectedObject.width)} px</span>
+                        </div>
+                        <input type="range" id="inspectorWidthInput" min="20" max="400" step="1" value="${selectedObject.width}" oninput="setObjectWidth(this.value)" onchange="saveState()">
+                    </div>
+                    <div class="control-row" style="flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label>鏡面厚度/高度 (Height)</label>
+                            <span style="color:#00ffc8; font-weight:bold;" id="inspectorHeightVal">${Math.round(selectedObject.height)} px</span>
+                        </div>
+                        <input type="range" id="inspectorHeightInput" min="10" max="300" step="1" value="${selectedObject.height}" oninput="setObjectHeight(this.value)" onchange="saveState()">
+                    </div>
+                    <div class="control-row">
+                        <label>鏡面類型</label>
+                        <span style="color:#00ffc8; font-weight:bold;">${selectedObject.type === 'mirror_flat' ? '平面反射鏡' : '凹面曲面鏡'}</span>
+                    </div>
+                `;
+            } else if (selectedObject instanceof LightSource) {
+                title.innerText = '發射光源 數據設定';
+                controls.innerHTML = angleHtml + `
+                    <div class="control-row" style="flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label>光源波寬 (Beam Width)</label>
+                            <span style="color:#00ffc8; font-weight:bold;" id="inspectorBeamWidthVal">${Math.round(selectedObject.beamWidth)} px</span>
+                        </div>
+                        <input type="range" id="inspectorBeamWidthInput" min="10" max="300" step="1" value="${selectedObject.beamWidth}" oninput="setLightBeamWidth(this.value)" onchange="saveState()">
+                    </div>
+                    <div class="control-row">
+                        <label>光線條數</label>
+                        <input type="range" min="1" max="25" step="1" value="${selectedObject.rayCount}" oninput="selectedObject.rayCount=parseInt(this.value)" onchange="saveState()">
+                    </div>
+                    <div class="control-row">
+                        <label>光束顏色</label>
+                        <input type="color" value="${selectedObject.color}" onchange="selectedObject.color=this.value; saveState();">
+                    </div>
+                `;
+            }
+        }
+
+        function deleteSelected() {
+            if (!selectedObject) return;
+            saveState();
+            lenses = lenses.filter(l => l !== selectedObject);
+            mirrors = mirrors.filter(m => m !== selectedObject);
+            lightSources = lightSources.filter(ls => ls !== selectedObject);
+            selectedObject = null;
+            hidePropButton();
+        }
+    </script>
+</body>
+</html>
